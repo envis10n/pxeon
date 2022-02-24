@@ -4,9 +4,9 @@ import telnet from "./net/telnet.ts";
 const manager = new NetManager(telnet({ hostname: "localhost", port: 3000 }));
 
 manager.events.connect.attach((client) => {
-  console.log("[Net]", client.uuid, "connected.");
+  console.log(`[Net.${client.parent}]`, client.uuid, "connected.");
   client.events.command.attach((ev) => {
-    console.log("[Net]", client.uuid, "command:", ev.command);
+    console.log(`[Net.${client.parent}]`, client.uuid, "command:", ev.command);
     client.respond({
       command: ev.command,
       stdout: "Command does not exist.",
@@ -15,13 +15,13 @@ manager.events.connect.attach((client) => {
     });
   });
   client.events.input.attach((ev) => {
-    console.log("[Net]", client.uuid, "stdin:", ev.data);
+    console.log(`[Net.${client.parent}]`, client.uuid, "stdin:", ev.data);
   });
 });
 
-manager.events.disconnect.attach(({ uuid, error }) => {
+manager.events.disconnect.attach(({ client, error }) => {
   if (error) {
-    console.log("[Net]", uuid, "client error:", error);
+    console.log(`[Net.${client.parent}]`, client.uuid, "client error:", error);
   }
-  console.log("[Net]", uuid, "disconnected.");
+  console.log(`[Net.${client.parent}]`, client.uuid, "disconnected.");
 });

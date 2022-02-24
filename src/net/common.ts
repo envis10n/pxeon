@@ -43,6 +43,7 @@ export type ClientEvent =
 
 export interface Client {
   uuid: string;
+  parent: string;
   events: {
     close: Evt<void>;
     command: Evt<ClientCommandEvent>;
@@ -58,13 +59,13 @@ export interface Client {
 
 export interface ServerEvents {
   connect: Evt<Client>;
-  disconnect: Evt<{ uuid: string; error?: Error }>;
+  disconnect: Evt<{ client: Client; error?: Error }>;
 }
 
 export interface NetServer {
   id: string;
   clients: Evt<Client>;
-  init(): Promise<void>;
+  init(logger: (...args: any[]) => void): Promise<void>;
 }
 
 export class NetManager {
@@ -85,11 +86,11 @@ export class NetManager {
         });
         client.events.close.attach(() => {
           this.clients.delete(client.uuid);
-          this.events.disconnect.post({ uuid: client.uuid, error: error_ });
+          this.events.disconnect.post({ client, error: error_ });
         });
         this.events.connect.post(client);
       });
-      server.init().catch((e) => {
+      server.init(console.log.bind(null, `[Net.${server.id}]`)).catch((e) => {
         console.error("Server error:", e);
       }).finally(() => {
         this.servers.delete(server.id);

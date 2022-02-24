@@ -16,15 +16,16 @@ export default function (opts: Deno.ListenOptions): NetServer {
   return {
     id: "Telnet",
     clients,
-    init: async () => {
-      const log = console.log.bind(null, "[Telnet]");
+    init: async (log) => {
       log("Listening on", `${opts.hostname || "127.0.0.1"}:${opts.port}...`);
       for await (const conn of listener) {
         const uuid = crypto.randomUUID();
         const parser = new TelnetParser(512, compat.clone());
         let running_command = false;
+        let command_timeout: number | null = null;
         const client: Client = {
           uuid,
+          parent: "Telnet",
           events: {
             close: new Evt(),
             command: new Evt(),
@@ -35,17 +36,22 @@ export default function (opts: Deno.ListenOptions): NetServer {
             return await conn.write(escapeIAC(chunk));
           },
           send: async (text): Promise<number> => {
+            if (!text.endsWith("\n")) text += "\n";
             return await conn.write(escapeIAC(new TextEncoder().encode(text)));
           },
           respond: async (res): Promise<number> => {
             if (!running_command) return 0;
-            const data = res.stderr.length > 0 ? res.stderr : res.stdout;
+            let data = res.stderr.length > 0 ? res.stderr : res.stdout;
+            if (!data.endsWith("\n")) data += "\n";
             running_command = false;
+            if (command_timeout != null) clearTimeout(command_timeout);
             return await conn.write(escapeIAC(new TextEncoder().encode(data)));
           },
           print: async (ev): Promise<number> => {
+            let data = ev.data;
+            if (!data.endsWith("\n")) data += "\n";
             return await conn.write(
-              escapeIAC(new TextEncoder().encode(ev.data)),
+              escapeIAC(new TextEncoder().encode(data)),
             );
           },
           close: conn.close,
@@ -64,19 +70,19 @@ export default function (opts: Deno.ListenOptions): NetServer {
                 // consider it input
                 client.events.input.post({
                   type: ClientEventType.Input,
-                  data: new TextDecoder().decode(unescapeIAC(ev.buffer)),
+                  data: new TextDecoder().decode(unescapeIAC(ev.buffer)).trim(),
                 });
               } else {
                 // consider it a command
                 running_command = true;
                 const command = new TextDecoder().decode(
                   unescapeIAC(ev.buffer),
-                );
+                ).trim();
                 client.events.command.post({
                   type: ClientEventType.Command,
                   command,
                 });
-                setTimeout(() => {
+                command_timeout = setTimeout(() => {
                   if (running_command) {
                     client.respond({
                       code: 1,
