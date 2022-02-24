@@ -44,7 +44,10 @@ export default function (opts: Deno.ListenOptions): NetServer {
             let data = res.stderr.length > 0 ? res.stderr : res.stdout;
             if (!data.endsWith("\n")) data += "\n";
             running_command = false;
-            if (command_timeout != null) clearTimeout(command_timeout);
+            if (command_timeout != null) {
+              clearTimeout(command_timeout);
+              command_timeout = null;
+            }
             return await conn.write(escapeIAC(new TextEncoder().encode(data)));
           },
           print: async (ev): Promise<number> => {

@@ -1,7 +1,11 @@
 import { NetManager } from "./net/common.ts";
 import telnet from "./net/telnet.ts";
+import websocket from "./net/websocket.ts";
 
-const manager = new NetManager(telnet({ hostname: "localhost", port: 3000 }));
+const manager = new NetManager(
+  telnet({ hostname: "localhost", port: 3000 }),
+  websocket({ hostname: "localhost", port: 13337 }),
+);
 
 manager.events.connect.attach((client) => {
   console.log(`[Net.${client.parent}]`, client.uuid, "connected.");
@@ -9,8 +13,8 @@ manager.events.connect.attach((client) => {
     console.log(`[Net.${client.parent}]`, client.uuid, "command:", ev.command);
     client.respond({
       command: ev.command,
-      stdout: "Command does not exist.",
-      stderr: "",
+      stderr: "Command does not exist.",
+      stdout: "",
       code: 1,
     });
   });
