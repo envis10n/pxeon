@@ -9,9 +9,9 @@ Project XEON, but it's in development.
 <tr>
     <td align="center">
         <a href="https://github.com/envis10n">
-            <img src="https://avatars.githubusercontent.com/u/8516759?v=4" width="100;" alt="envis10n"/>
+            <img src="https://avatars.githubusercontent.com/u/8516759?v=4" width="50;" alt="envis10n"/>
             <br />
-            <sub><b>Andrew</b></sub>
+            <sub><b>envis10n</b></sub>
         </a>
     </td></tr>
 </table>
