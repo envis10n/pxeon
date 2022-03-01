@@ -7,6 +7,12 @@ export enum ClientEventType {
   Result,
 }
 
+export function isPrintEvent(
+  ev: ClientResult | ClientPrintEvent,
+): ev is ClientPrintEvent {
+  return (ev as ClientPrintEvent).type != undefined;
+}
+
 export type ClientBaseEvent = {
   type: ClientEventType;
 };

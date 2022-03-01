@@ -1,8 +1,18 @@
+import {
+  Client,
+  ClientCommandEvent,
+  ClientInputEvent,
+  ClientPrintEvent,
+  ClientResult,
+} from "./common.ts";
+
 export enum WorkerEventType {
   Connect,
   Data,
   Error,
   Disconnect,
+  Incoming,
+  Outgoing,
   Init,
 }
 
@@ -12,31 +22,21 @@ export interface WorkerContext<T = any> {
   postMessage: (data: T) => void;
 }
 
-export type DedicatedWorkerContext<T = any> =
-  & WorkerContext<T>
-  & Window
-  & typeof globalThis;
-
-export interface WorkerEventBase {
-  type: WorkerEventType;
-  payload?: {
-    [key: string]: string | number | boolean | ArrayBuffer | undefined;
-  };
-}
+export type DedicatedWorkerContext<T = any> = WorkerContext<T>;
 
 export type WorkerConnectEvent = {
   type: WorkerEventType.Connect;
   payload: {
     uuid: string;
   };
-} & WorkerEventBase;
+};
 
 export type WorkerDisconnectEvent = {
   type: WorkerEventType.Disconnect;
   payload: {
     uuid: string;
   };
-} & WorkerEventBase;
+};
 
 export type WorkerDataEvent = {
   type: WorkerEventType.Data;
@@ -44,7 +44,7 @@ export type WorkerDataEvent = {
     uuid: string;
     data: string | ArrayBuffer;
   };
-} & WorkerEventBase;
+};
 
 export type WorkerErrorEvent = {
   type: WorkerEventType.Error;
@@ -52,7 +52,23 @@ export type WorkerErrorEvent = {
     uuid: string;
     error: string;
   };
-} & WorkerEventBase;
+};
+
+export type WorkerOutgoingEvent = {
+  type: WorkerEventType.Outgoing;
+  payload: {
+    uuid: string;
+    event: ClientPrintEvent | ClientResult;
+  };
+};
+
+export type WorkerIncomingEvent = {
+  type: WorkerEventType.Incoming;
+  payload: {
+    uuid: string;
+    event: ClientCommandEvent | ClientInputEvent;
+  };
+};
 
 export type WorkerInitEvent = {
   type: WorkerEventType.Init;
@@ -60,12 +76,13 @@ export type WorkerInitEvent = {
     hostname?: string;
     port: number;
   };
-} & WorkerEventBase;
+};
 
 export type WorkerEvent =
-  | WorkerEventBase
   | WorkerConnectEvent
   | WorkerDisconnectEvent
   | WorkerDataEvent
   | WorkerErrorEvent
-  | WorkerInitEvent;
+  | WorkerInitEvent
+  | WorkerIncomingEvent
+  | WorkerOutgoingEvent;
