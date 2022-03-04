@@ -56,6 +56,8 @@ export interface Client {
     input: Evt<ClientInputEvent>;
     error: Evt<Error>;
   };
+  prompt_resolver: ((response: string) => void) | null;
+  prompt(question: string): Promise<string>;
   write(chunk: Uint8Array): Promise<number>;
   send(text: string): Promise<number>;
   respond(result: ClientResult): Promise<number>;

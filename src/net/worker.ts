@@ -117,6 +117,7 @@ export default function (
                 const client: Client = {
                   uuid: data.payload.uuid,
                   parent: listen_id,
+                  prompt_resolver: null,
                   events: {
                     command: new Evt(),
                     close: new Evt(),
@@ -125,6 +126,26 @@ export default function (
                   },
                   close: async () => {
                     postClose(data.payload.uuid);
+                  },
+                  prompt: async (question): Promise<string> => {
+                    return await new Promise((resolve, reject) => {
+                      try {
+                        client.prompt_resolver = (response) => {
+                          client.prompt_resolver = null;
+                          resolve(response);
+                        };
+                        client.print({
+                          type: ClientEventType.Print,
+                          data: question,
+                        })
+                          .catch((e) => {
+                            client.prompt_resolver = null;
+                            throw e;
+                          });
+                      } catch (e) {
+                        reject(e);
+                      }
+                    });
                   },
                   send: async (_text): Promise<number> => {
                     postData(data.payload.uuid, _text);

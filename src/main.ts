@@ -2,14 +2,21 @@ import { NetManager } from "./net/common.ts";
 import telnet from "./net/telnet.ts";
 import websocket from "./net/websocket.ts";
 import commands from "./commands.ts";
+import { authenticate } from "./user.ts";
 
 const manager = new NetManager(
   telnet({ hostname: "localhost", port: 3000 }),
   websocket({ hostname: "localhost", port: 13337 }),
 );
 
-manager.events.connect.attach((client) => {
-  console.log(`[Net.${client.parent}]`, client.uuid, "connected.");
+manager.events.connect.attach(async (client) => {
+  const log = console.log.bind(`[Net.${client.parent}]`);
+  log(client.uuid, "connected.");
+  const user = await authenticate(client);
+  log(client.uuid, "authenticated as:", user.username);
+  user.last_login = new Date();
+  await user.update();
+  await client.send("Welcome to Project XEON, " + user.username + ".");
   client.events.command.attach((ev) => {
     console.log(`[Net.${client.parent}]`, client.uuid, "command:", ev.command);
     const cmds = ev.command.split(" ");

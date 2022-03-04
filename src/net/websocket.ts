@@ -19,6 +19,7 @@ export default function (opts: Deno.ListenOptions): NetServer {
           const client: Client = {
             uuid,
             parent: "WebSocket",
+            prompt_resolver: null,
             events: {
               close: new Evt(),
               command: new Evt(),
@@ -27,6 +28,23 @@ export default function (opts: Deno.ListenOptions): NetServer {
             },
             close: () => {
               socket.close();
+            },
+            prompt: async (question): Promise<string> => {
+              return await new Promise((resolve, reject) => {
+                try {
+                  client.prompt_resolver = (response) => {
+                    client.prompt_resolver = null;
+                    resolve(response);
+                  };
+                  client.print({ type: ClientEventType.Print, data: question })
+                    .catch((e) => {
+                      client.prompt_resolver = null;
+                      throw e;
+                    });
+                } catch (e) {
+                  reject(e);
+                }
+              });
             },
             respond: (result) => {
               return new Promise((resolve, reject) => {
@@ -92,7 +110,9 @@ export default function (opts: Deno.ListenOptions): NetServer {
             const message: string = typeof data == "string"
               ? data
               : new TextDecoder().decode(data);
-            if (!command_running) {
+            if (client.prompt_resolver != null) {
+              client.prompt_resolver(message);
+            } else if (!command_running) {
               // command
               command_running = true;
               command_timeout = setTimeout(() => {

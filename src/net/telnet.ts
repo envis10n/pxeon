@@ -26,11 +26,29 @@ export default function (opts: Deno.ListenOptions): NetServer {
         const client: Client = {
           uuid,
           parent: "Telnet",
+          prompt_resolver: null,
           events: {
             close: new Evt(),
             command: new Evt(),
             input: new Evt(),
             error: new Evt(),
+          },
+          prompt: async (question): Promise<string> => {
+            return await new Promise((resolve, reject) => {
+              try {
+                client.prompt_resolver = (response) => {
+                  client.prompt_resolver = null;
+                  resolve(response);
+                };
+                client.print({ type: ClientEventType.Print, data: question })
+                  .catch((e) => {
+                    client.prompt_resolver = null;
+                    throw e;
+                  });
+              } catch (e) {
+                reject(e);
+              }
+            });
           },
           write: async (chunk): Promise<number> => {
             return await conn.write(escapeIAC(chunk));
@@ -69,7 +87,11 @@ export default function (opts: Deno.ListenOptions): NetServer {
             }
 
             for (const ev of events.filter((e) => e.type == EventType.Normal)) {
-              if (running_command) {
+              if (client.prompt_resolver != null) {
+                client.prompt_resolver(
+                  new TextDecoder().decode(unescapeIAC(ev.buffer)).trim(),
+                );
+              } else if (running_command) {
                 // consider it input
                 client.events.input.post({
                   type: ClientEventType.Input,
