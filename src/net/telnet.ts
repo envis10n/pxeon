@@ -27,6 +27,7 @@ export default function (opts: Deno.ListenOptions): NetServer {
           uuid,
           parent: "Telnet",
           prompt_resolver: null,
+          user: null,
           events: {
             close: new Evt(),
             command: new Evt(),

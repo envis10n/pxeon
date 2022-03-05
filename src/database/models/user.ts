@@ -4,10 +4,19 @@ export default class User extends Model {
   static table = "users";
   static timestamps = true;
   static fields = {
-    id: { primaryKey: true, autoIncrement: true },
+    uuid: { primaryKey: true, type: DataTypes.UUID },
     username: DataTypes.STRING,
     hash: DataTypes.STRING,
+    group: DataTypes.STRING,
     last_login: DataTypes.DATETIME,
     connection_chain: DataTypes.STRING,
   };
+  uuid!: string;
+  username!: string;
+  hash!: string;
+  group!: string;
+  last_login!: Date;
+  connection_chain!: string;
+  created_at!: Date;
+  updated_at!: Date;
 }

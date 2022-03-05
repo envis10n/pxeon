@@ -1,5 +1,7 @@
 import { ClientResult } from "./net/common.ts";
 import * as _path from "https://deno.land/std@0.128.0/path/mod.ts";
+import User from "./database/models/user.ts";
+import { ISession } from "./session.ts";
 
 export async function loadCommand(filename: string): Promise<ICommand> {
   const mod = await import(`./commands/${filename}`) as { default: ICommand };
@@ -19,7 +21,10 @@ export interface ICommand {
   uuid: string;
   description: string;
   help: string;
-  executor(env: IEnv, ...args: string[]): Promise<ClientResult>;
+  executor(
+    process: { user: User; env: IEnv; session: ISession },
+    ...args: string[]
+  ): Promise<ClientResult>;
 }
 
 export function printHelp(command: ICommand): string {

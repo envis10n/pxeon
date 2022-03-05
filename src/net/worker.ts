@@ -118,6 +118,7 @@ export default function (
                   uuid: data.payload.uuid,
                   parent: listen_id,
                   prompt_resolver: null,
+                  user: null,
                   events: {
                     command: new Evt(),
                     close: new Evt(),

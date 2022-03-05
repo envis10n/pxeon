@@ -1,4 +1,5 @@
 import { Evt } from "https://deno.land/x/evt@v1.10.2/mod.ts";
+import User from "../database/models/user.ts";
 
 export enum ClientEventType {
   Command,
@@ -56,6 +57,7 @@ export interface Client {
     input: Evt<ClientInputEvent>;
     error: Evt<Error>;
   };
+  user: User | null;
   prompt_resolver: ((response: string) => void) | null;
   prompt(question: string): Promise<string>;
   write(chunk: Uint8Array): Promise<number>;

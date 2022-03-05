@@ -16,12 +16,14 @@ export async function authenticate(client: Client): Promise<User> {
       client.send("Passwords did not match.");
       return await authenticate(client);
     } else {
-      return await User.create({
-        username,
-        hash: await bcrypt.hash(password),
-        last_login: new Date(),
-        connection_chain: "",
-      });
+      const user = new User();
+      user.uuid = crypto.randomUUID();
+      user.hash = await bcrypt.hash(password);
+      user.group = username;
+      user.username = username;
+      user.last_login = new Date();
+      user.connection_chain = "";
+      return await user.save();
     }
   } else {
     const password = await client.prompt("Password: ");
