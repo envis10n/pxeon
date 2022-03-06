@@ -1,0 +1,16 @@
+{
+    "postgresql": {
+        "hostname": "localhost",
+        "port": 5432,
+        "username": "pxeon",
+        "password": "pxeon",
+        "database": "pxeon"
+    },
+    "listeners": [
+        {
+            "hostname": "localhost",
+            "port": 3000,
+            "file": "telnet.ts"
+        }
+    ]
+}

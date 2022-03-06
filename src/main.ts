@@ -1,13 +1,31 @@
-import { NetManager } from "./net/common.ts";
-import telnet from "./net/telnet.ts";
-import websocket from "./net/websocket.ts";
+import { NetManager, NetServer } from "./net/common.ts";
 import commands from "./commands.ts";
 import { authenticate } from "./user.ts";
 import { ISession } from "./session.ts";
+import config from "./config.ts";
+
+type NetServerFactory = (opts: Deno.ListenOptions) => NetServer;
+
+const _listeners: { factory: NetServerFactory; opts: Deno.ListenOptions }[] =
+  [];
+
+if (config.listeners != undefined) {
+  for (const def of config.listeners) {
+    const factory: NetServerFactory =
+      (await import(`./net/${def.file}`)).default;
+    _listeners.push(
+      { factory, opts: { hostname: def.hostname, port: def.port } },
+    );
+  }
+}
+
+if (_listeners.length == 0) {
+  console.error("No listeners defined in configuration file. Aborting...");
+  Deno.exit(1);
+}
 
 const manager = new NetManager(
-  telnet({ hostname: "localhost", port: 3000 }),
-  websocket({ hostname: "localhost", port: 13337 }),
+  ..._listeners.map((l) => l.factory(l.opts)),
 );
 
 manager.events.connect.attach(async (client) => {
