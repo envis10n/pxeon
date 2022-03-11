@@ -1,0 +1,17 @@
+{
+    "arangodb": {
+        "uri": "http://127.0.0.1:8529/_db/pxeon",
+        "username": "pxeon",
+        "password": "pxeon",
+        "collections": [
+            "users"
+        ]
+    },
+    "listeners": [
+        {
+            "hostname": "localhost",
+            "port": 3000,
+            "file": "telnet.ts"
+        }
+    ]
+}

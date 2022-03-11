@@ -1,10 +1,17 @@
 import { Evt } from "https://deno.land/x/evt@v1.10.2/mod.ts";
+import User from "../database/models/user.ts";
 
 export enum ClientEventType {
   Command,
   Input,
   Print,
   Result,
+}
+
+export function isPrintEvent(
+  ev: ClientResult | ClientPrintEvent,
+): ev is ClientPrintEvent {
+  return (ev as ClientPrintEvent).type != undefined;
 }
 
 export type ClientBaseEvent = {
@@ -43,12 +50,16 @@ export type ClientEvent =
 
 export interface Client {
   uuid: string;
+  parent: string;
   events: {
     close: Evt<void>;
     command: Evt<ClientCommandEvent>;
     input: Evt<ClientInputEvent>;
     error: Evt<Error>;
   };
+  user: User | null;
+  prompt_resolver: ((response: string) => void) | null;
+  prompt(question: string): Promise<string>;
   write(chunk: Uint8Array): Promise<number>;
   send(text: string): Promise<number>;
   respond(result: ClientResult): Promise<number>;
@@ -58,13 +69,13 @@ export interface Client {
 
 export interface ServerEvents {
   connect: Evt<Client>;
-  disconnect: Evt<{ uuid: string; error?: Error }>;
+  disconnect: Evt<{ client: Client; error?: Error }>;
 }
 
 export interface NetServer {
   id: string;
   clients: Evt<Client>;
-  init(): Promise<void>;
+  init(logger: (...args: any[]) => void): Promise<void>;
 }
 
 export class NetManager {
@@ -85,11 +96,11 @@ export class NetManager {
         });
         client.events.close.attach(() => {
           this.clients.delete(client.uuid);
-          this.events.disconnect.post({ uuid: client.uuid, error: error_ });
+          this.events.disconnect.post({ client, error: error_ });
         });
         this.events.connect.post(client);
       });
-      server.init().catch((e) => {
+      server.init(console.log.bind(null, `[Net.${server.id}]`)).catch((e) => {
         console.error("Server error:", e);
       }).finally(() => {
         this.servers.delete(server.id);
