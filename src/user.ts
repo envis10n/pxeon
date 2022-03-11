@@ -1,14 +1,13 @@
 const bcrypt = await import("https://deno.land/x/bcrypt@v0.3.0/mod.ts");
 import { Client } from "./net/common.ts";
+import arango, { Document } from "./database/database.ts";
 import User from "./database/models/user.ts";
 
-export async function authenticate(client: Client): Promise<User> {
+const users = await arango.collection<User>("users");
+
+export async function authenticate(client: Client): Promise<Document<User>> {
   const username = await client.prompt("Username: ");
-  const user = await User.select().where(
-    "username",
-    username,
-  )
-    .first() as User | undefined;
+  const user = await users.findOne({ username });
   if (user == undefined) {
     const password = await client.prompt("Create a password: ");
     const password2 = await client.prompt("Re-type Password: ");
@@ -16,14 +15,15 @@ export async function authenticate(client: Client): Promise<User> {
       client.send("Passwords did not match.");
       return await authenticate(client);
     } else {
-      const user = new User();
-      user.uuid = crypto.randomUUID();
-      user.hash = await bcrypt.hash(password);
-      user.group = username;
-      user.username = username;
-      user.last_login = new Date();
-      user.connection_chain = "";
-      return await user.save();
+      return await users.create({
+        uuid: crypto.randomUUID(),
+        hash: await bcrypt.hash(password),
+        group: username,
+        username,
+        last_login: new Date().toISOString(),
+        connection_chain: "",
+        created_at: new Date().toISOString(),
+      });
     }
   } else {
     const password = await client.prompt("Password: ");

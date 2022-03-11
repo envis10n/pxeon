@@ -1,30 +1,30 @@
-import {
-  Database,
-  PostgresConnector,
-} from "https://deno.land/x/denodb@v1.0.40/mod.ts";
-import User from "./models/user.ts";
 import config from "../config.ts";
+import { Arango } from "https://deno.land/x/darango@0.0.4/mod.ts";
+export * from "https://deno.land/x/darango@0.0.4/mod.ts";
 
 const log = console.log.bind("[DB]");
 
-log("Connecting database...");
+log("Connecting to database...");
 
-const _connection = new PostgresConnector({
-  username: config.postgresql.username,
-  password: config.postgresql.password,
-  host: config.postgresql.hostname,
-  database: config.postgresql.database,
-  port: config.postgresql.port,
+const arango = await Arango.basicAuth({
+  uri: config.arangodb.uri,
+  username: config.arangodb.username,
+  password: config.arangodb.password,
 });
 
-const _db = new Database(_connection);
+export async function sync(...collections: string[]) {
+  for (const collection of collections) {
+    try {
+      await arango.createCollection(collection);
+      log("Created collection:", collection);
+    } catch (_e) {
+      log("Collection", collection, "already exists. Skipping.");
+    }
+  }
+}
 
-log("Linking models...");
+log("Synchronizing collections...");
 
-await _db.link([User]);
+await sync(...config.arangodb.collections);
 
-log("Synchronizing tables...");
-
-await _db.sync();
-
-log("Database loaded.");
+export default arango;

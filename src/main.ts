@@ -41,7 +41,7 @@ manager.events.connect.attach(async (client) => {
       session.cwd == `/home/${user.username}` ? "~" : session.cwd
     }$ `;
   log(client.uuid, "authenticated as:", user.username);
-  user.last_login = new Date();
+  user.last_login = new Date().toISOString();
   await user.update();
   await client.send("Welcome to Project XEON, " + user.username + ".");
   client.events.command.attach(async (ev) => {

@@ -1,10 +1,11 @@
 {
-    "postgresql": {
-        "hostname": "localhost",
-        "port": 5432,
+    "arangodb": {
+        "uri": "http://127.0.0.1:8529/_db/pxeon",
         "username": "pxeon",
         "password": "pxeon",
-        "database": "pxeon"
+        "collections": [
+            "users"
+        ]
     },
     "listeners": [
         {

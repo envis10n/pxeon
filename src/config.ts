@@ -7,12 +7,11 @@ export interface IListenerConf {
 }
 
 export interface IConfig {
-  postgresql: {
-    hostname: string;
-    port?: number;
+  arangodb: {
+    uri: string;
     username: string;
     password: string;
-    database: string;
+    collections: string[];
   };
   listeners?: IListenerConf[];
 }
