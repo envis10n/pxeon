@@ -1,3 +1,7 @@
+import { Document } from "../database.ts";
+
+export type UserDoc = Document<User>;
+
 export default interface User {
   uuid: string;
   username: string;

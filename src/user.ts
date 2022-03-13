@@ -1,11 +1,11 @@
 const bcrypt = await import("https://deno.land/x/bcrypt@v0.3.0/mod.ts");
 import { Client } from "./net/common.ts";
-import arango, { Document } from "./database/database.ts";
-import User from "./database/models/user.ts";
+import arango from "./database/database.ts";
+import User, { UserDoc } from "./database/models/user.ts";
 
 const users = await arango.collection<User>("users");
 
-export async function authenticate(client: Client): Promise<Document<User>> {
+export async function authenticate(client: Client): Promise<UserDoc> {
   const username = await client.prompt("Username: ");
   const user = await users.findOne({ username });
   if (user == undefined) {
