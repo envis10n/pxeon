@@ -44,6 +44,19 @@ export interface MockEntryBase {
   last_modified: number;
 }
 
+export function defaultMockDir(): MockDirectory {
+  return {
+    type: "DIRECTORY",
+    permissions: {
+      read: MockPermissions(PERM_USER_GROUP),
+      write: MockPermissions(PERM_USER_GROUP),
+      execute: MockPermissions(PERM_USER_GROUP),
+    },
+    created: Date.now(),
+    last_modified: Date.now(),
+  };
+}
+
 /**
  * A directory in the mock filesystem.
  */
@@ -126,9 +139,7 @@ export interface MockFSConnector {
  * Backed by a connector interface to load filesystem contents on the fly.
  */
 export class MockFilesystem implements IMockFS {
-  constructor(private connector: MockFSConnector) {
-    //
-  }
+  constructor(public readonly connector: MockFSConnector) {}
   public async read(path: string): Promise<Uint8Array>;
   public async read(path: string, opts: { encoding: "utf-8" }): Promise<string>;
   public async read(
@@ -207,13 +218,26 @@ export class MockFilesystem implements IMockFS {
     };
     return await this.connector.place(path, entry);
   }
+  // deno-lint-ignore require-await no-unused-vars
   public async mkdirp(path: string): Promise<void> {
     throw new Error("Not yet implemented.");
   }
+  // deno-lint-ignore require-await no-unused-vars
   public async rm(path: string): Promise<void> {
     throw new Error("Not yet implemented.");
   }
+  // deno-lint-ignore require-await no-unused-vars
   public async rmdir(path: string): Promise<void> {
     throw new Error("Not yet implemented.");
   }
+}
+
+export function defaultFilesystem(user: string): MockFS {
+  const res: MockFS = {
+    "/": defaultMockDir(),
+    "/home": defaultMockDir(),
+    "/bin": defaultMockDir(),
+  };
+  res[`/home/${user}`] = defaultMockDir();
+  return res;
 }
