@@ -1,12 +1,12 @@
 import config from "../config.ts";
 import {
   Arango,
-  Collection,
-  Document,
-} from "https://deno.land/x/darango@0.1.0/mod.ts";
-export * from "https://deno.land/x/darango@0.1.0/mod.ts";
+  Graph,
+} from "https://raw.githubusercontent.com/envis10n/darango/6f342fc5db2c6694ebe25c8fdb1987c977e17c95/mod.ts";
+export * from "https://raw.githubusercontent.com/envis10n/darango/6f342fc5db2c6694ebe25c8fdb1987c977e17c95/mod.ts";
 import {
   defaultFilesystem,
+  MockAccess,
   MockEntry,
   MockFilesystem,
   MockFS,
@@ -14,44 +14,110 @@ import {
   MockPermissions,
 } from "../filesystem.ts";
 
+import FSEntry, { FSEntryDir } from "./models/fsentry.ts";
+
+type EdgeBase<T = Record<never, never>> = {
+  _to: string;
+  _from: string;
+} & T;
+
 export class ArangoFSConnector implements MockFSConnector {
   constructor(
-    private readonly collection: Collection<MockFS>,
-    public readonly doc_id: string,
+    private readonly arango: Arango,
+    public readonly sys_id: string,
   ) {}
-  private async doc(): Promise<Document<MockFS>> {
-    return await this.collection.get(this.doc_id);
-  }
   public async retrieve(path: string): Promise<MockEntry> {
-    const doc = await this.doc();
-    if (doc[path] != undefined) {
-      const entry = doc[path];
-      if (entry.type == "FILE") {
-        const temp = entry.contents as { [key: number]: number }; // Stored in DB as object
-        entry.contents = new Uint8Array([...Object.values(temp)]);
-      }
-      // Handle permissions rebuilding.
-      const _execute = entry.permissions.execute as unknown as {
-        _value: number;
+    const res = await (await this.arango.graph("files")).traversal<FSEntry>(
+      this.sys_id,
+      "INBOUND",
+      {
+        prune: { path },
+        filter: { path },
+      },
+    ).collect();
+    const doc = res.find((d) => d.path == path);
+    if (res.length == 0 || doc == undefined) {
+      throw new Error("Path not found.");
+    }
+    const permissions: MockAccess = {
+      read: MockPermissions(doc.permissions.read),
+      write: MockPermissions(doc.permissions.write),
+      execute: MockPermissions(doc.permissions.execute),
+    };
+    if (doc.type == "FILE") {
+      return {
+        type: doc.type,
+        permissions,
+        created_at: doc.created_at,
+        last_modified: doc.last_modified,
+        encoding: doc.encoding,
+        contents: new Uint8Array(doc.contents),
       };
-      const _read = entry.permissions.read as unknown as { _value: number };
-      const _write = entry.permissions.write as unknown as { _value: number };
-      entry.permissions.execute = MockPermissions(_execute._value);
-      entry.permissions.read = MockPermissions(_read._value);
-      entry.permissions.write = MockPermissions(_write._value);
-      // End permissions rebuild.
-
-      return entry;
-    } else throw new Error("Path does not exist.");
+    } else {
+      return {
+        type: doc.type,
+        permissions,
+        created_at: doc.created_at,
+        last_modified: doc.last_modified,
+      };
+    }
   }
   public async place(path: string, entry: MockEntry): Promise<void> {
-    const doc = await this.doc();
-    doc[path] = entry;
-    await doc.update();
+    const res = await (await this.arango.graph("files")).traversal<FSEntry>(
+      this.sys_id,
+      "INBOUND",
+      {
+        prune: { path },
+        filter: { path },
+      },
+    ).collect();
+    const filesystems = await this.arango.collection<FSEntry>("filesystems");
+    const edges = await this.arango.collection<EdgeBase>("files_to_system");
+    const doc = res.find((d) => d.path == path);
+    const ndoc_base: FSEntryDir = {
+      type: "DIRECTORY",
+      path,
+      permissions: {
+        read: entry.permissions.read.bits,
+        write: entry.permissions.write.bits,
+        execute: entry.permissions.execute.bits,
+      },
+      created_at: entry.created_at,
+      last_modified: entry.last_modified,
+    };
+    const ndoc_entry = entry.type == "FILE"
+      ? Object.assign(ndoc_base, {
+        type: "FILE",
+        contents: [...entry.contents],
+        encoding: entry.encoding,
+      })
+      : ndoc_base;
+    if (res.length == 0 || doc == undefined) {
+      // Create document and link to system.
+      const ndoc = await filesystems.create(
+        ndoc_entry,
+      );
+      await edges.create({
+        _to: this.sys_id,
+        _from: ndoc._id,
+      });
+    } else {
+      const udoc = await filesystems.get(doc._key);
+      Object.assign(udoc, ndoc_entry);
+      await udoc.update();
+    }
   }
   public async contains(path: string): Promise<boolean> {
-    const doc = await this.doc();
-    return doc[path] != undefined;
+    const res = await (await this.arango.graph("files")).traversal<FSEntry>(
+      this.sys_id,
+      "INBOUND",
+      {
+        prune: { path },
+        filter: { path },
+      },
+    ).collect();
+    const doc = res.find((d) => d.path == path);
+    return !(res.length == 0 || doc == undefined);
   }
 }
 
@@ -76,18 +142,23 @@ export async function sync(...collections: string[]) {
   }
 }
 
-export async function createFilesystem(user: string): Promise<MockFilesystem> {
-  const fscol = await arango.collection<MockFS>("filesystems");
-  const doc = await fscol.create(defaultFilesystem(user));
-  const conn = new ArangoFSConnector(fscol, doc._key);
+export async function createFilesystem(
+  user: string,
+  system: string,
+): Promise<MockFilesystem> {
+  const def_fs = defaultFilesystem(user);
+  const conn = new ArangoFSConnector(arango, system);
+  for (const path of Object.keys(def_fs)) {
+    const entry = def_fs[path];
+    await conn.place(path, entry);
+  }
   return new MockFilesystem(conn);
 }
 
-export async function getFilesystem(key: string): Promise<MockFilesystem> {
+export function getFilesystem(key: string): MockFilesystem {
   try {
-    (await arango.collection<MockFS>("filesystems")).get(key);
     const conn = new ArangoFSConnector(
-      await arango.collection<MockFS>("filesystems"),
+      arango,
       key,
     );
     return new MockFilesystem(conn);

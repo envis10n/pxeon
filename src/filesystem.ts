@@ -40,7 +40,7 @@ export interface MockAccess {
 export interface MockEntryBase {
   type: "DIRECTORY" | "FILE";
   permissions: MockAccess;
-  created: number;
+  created_at: number;
   last_modified: number;
 }
 
@@ -52,7 +52,7 @@ export function defaultMockDir(): MockDirectory {
       write: MockPermissions(PERM_USER_GROUP),
       execute: MockPermissions(PERM_USER_GROUP),
     },
-    created: Date.now(),
+    created_at: Date.now(),
     last_modified: Date.now(),
   };
 }
@@ -168,7 +168,7 @@ export class MockFilesystem implements IMockFS {
     const entry: MockFile = {
       type: "FILE",
       contents: data,
-      created: Date.now(),
+      created_at: Date.now(),
       last_modified: Date.now(),
       permissions: {
         read: MockPermissions(PERM_USER_GROUP),
@@ -208,7 +208,7 @@ export class MockFilesystem implements IMockFS {
     if (await this.exists(path)) throw new Error("Path already exists.");
     const entry: MockDirectory = {
       type: "DIRECTORY",
-      created: Date.now(),
+      created_at: Date.now(),
       last_modified: Date.now(),
       permissions: {
         read: MockPermissions(PERM_USER_GROUP),
