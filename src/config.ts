@@ -1,4 +1,5 @@
 import * as _path from "https://deno.land/std@0.128.0/path/mod.ts";
+import { CollectionDefinitions } from "./database/database.ts";
 
 export interface IListenerConf {
   hostname: string;
@@ -11,7 +12,7 @@ export interface IConfig {
     uri: string;
     username: string;
     password: string;
-    collections: string[];
+    collections: CollectionDefinitions[];
   };
   listeners?: IListenerConf[];
 }

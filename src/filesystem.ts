@@ -116,6 +116,7 @@ export interface IMockFS {
   stat(path: string): Promise<MockStat>;
   exists(path: string): Promise<boolean>;
   mkdir(path: string): Promise<void>;
+  readdir(path: string): Promise<string[]>;
   mkdirp(path: string): Promise<void>;
   rm(path: string): Promise<void>;
   rmdir(path: string): Promise<void>;
@@ -128,9 +129,11 @@ export interface IMockFS {
  * require loading the entire mocked filesystem into memory.
  */
 export interface MockFSConnector {
+  root_id: string;
   retrieve(path: string): Promise<MockEntry>;
   place(path: string, entry: MockEntry): Promise<void>;
   contains(path: string): Promise<boolean>;
+  recurse(path: string): Promise<string[]>;
 }
 
 /**
@@ -217,6 +220,9 @@ export class MockFilesystem implements IMockFS {
       },
     };
     return await this.connector.place(path, entry);
+  }
+  public async readdir(path: string): Promise<string[]> {
+    return await this.connector.recurse(path);
   }
   // deno-lint-ignore require-await no-unused-vars
   public async mkdirp(path: string): Promise<void> {

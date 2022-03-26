@@ -4,12 +4,15 @@ import { assertEquals } from "https://deno.land/std@0.130.0/testing/asserts.ts";
 Deno.test("fs-test", async () => {
   const systems = await arango.collection("systems");
   const filesystems = await arango.collection("filesystems");
-  const edges = await arango.collection("files_to_system");
+  const edges = await arango.collection("file_links");
   await filesystems.truncate();
   await edges.truncate();
   await systems.truncate();
-  const sys = await systems.create({ uuid: crypto.randomUUID() });
-  const fs = await createFilesystem("test1", sys._id);
+  const fs = await createFilesystem("test1");
+  await systems.create({
+    uuid: crypto.randomUUID(),
+    filesystems: fs.connector.root_id,
+  });
   const stat = await fs.stat("/home/test1");
   assertEquals(stat.isDirectory, true);
   assertEquals(await fs.exists("/home/test1/derp.txt"), false);

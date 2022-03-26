@@ -8,6 +8,7 @@ export default interface User {
   hash: string;
   group: string;
   last_login: string;
+  home_system: string;
   connection_chain: string;
   created_at: string;
 }

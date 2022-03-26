@@ -1,20 +1,19 @@
 import config from "../config.ts";
-import {
-  Arango,
-  Graph,
-} from "https://raw.githubusercontent.com/envis10n/darango/6f342fc5db2c6694ebe25c8fdb1987c977e17c95/mod.ts";
-export * from "https://raw.githubusercontent.com/envis10n/darango/6f342fc5db2c6694ebe25c8fdb1987c977e17c95/mod.ts";
+import { Arango } from "https://deno.land/x/darango@0.1.6/mod.ts";
+export * from "https://deno.land/x/darango@0.1.6/mod.ts";
+import { EdgeDefinition } from "https://deno.land/x/darango@0.1.6/graph.ts";
 import {
   defaultFilesystem,
   MockAccess,
   MockEntry,
   MockFilesystem,
-  MockFS,
   MockFSConnector,
   MockPermissions,
 } from "../filesystem.ts";
+import { posix as _path } from "https://deno.land/std@0.130.0/path/mod.ts";
 
 import FSEntry, { FSEntryDir } from "./models/fsentry.ts";
+import System from "./models/system.ts";
 
 type EdgeBase<T = Record<never, never>> = {
   _to: string;
@@ -24,20 +23,59 @@ type EdgeBase<T = Record<never, never>> = {
 export class ArangoFSConnector implements MockFSConnector {
   constructor(
     private readonly arango: Arango,
-    public readonly sys_id: string,
+    public readonly root_id: string,
   ) {}
-  public async retrieve(path: string): Promise<MockEntry> {
+  private async getPathID(path: string): Promise<string> {
+    if (path == "/") return this.root_id;
     const res = await (await this.arango.graph("files")).traversal<FSEntry>(
-      this.sys_id,
-      "INBOUND",
+      this.root_id,
+      "OUTBOUND",
       {
         prune: { path },
         filter: { path },
+        limit: 500,
       },
     ).collect();
-    const doc = res.find((d) => d.path == path);
-    if (res.length == 0 || doc == undefined) {
-      throw new Error("Path not found.");
+    if (res.length == 0) throw new Error("Path not found.");
+    return res[0]._id;
+  }
+  private async getDir(path: string): Promise<string> {
+    if (path == "/") return this.root_id;
+    const parsed = _path.parse(path);
+    const parent = parsed.dir;
+    return await this.getPathID(parent);
+  }
+  public async recurse(path: string): Promise<string[]> {
+    const parent = await this.getPathID(path);
+    const res = await (await this.arango.graph("files")).traversal<FSEntry>(
+      parent,
+      "OUTBOUND",
+      {
+        limit: 1,
+        min: 1,
+      },
+    ).collect();
+    const rec = res.map((e) => _path.parse(e.path).name);
+    return rec;
+  }
+  public async retrieve(path: string): Promise<MockEntry> {
+    const parent = await this.getDir(path);
+    const res = await (await this.arango.graph("files")).traversal<FSEntry>(
+      parent,
+      "OUTBOUND",
+      {
+        prune: { path },
+        filter: { path },
+        limit: 500,
+      },
+    ).collect();
+    const doc = path == "/"
+      ? await (await this.arango.collection<FSEntry>("filesystems")).findOne({
+        _id: this.root_id,
+      })
+      : res.find((d) => d.path == path);
+    if (doc == undefined) {
+      throw new Error("Path not found: " + path);
     }
     const permissions: MockAccess = {
       read: MockPermissions(doc.permissions.read),
@@ -63,16 +101,18 @@ export class ArangoFSConnector implements MockFSConnector {
     }
   }
   public async place(path: string, entry: MockEntry): Promise<void> {
+    const parent = await this.getDir(path);
     const res = await (await this.arango.graph("files")).traversal<FSEntry>(
-      this.sys_id,
-      "INBOUND",
+      parent,
+      "OUTBOUND",
       {
         prune: { path },
         filter: { path },
+        limit: 500,
       },
     ).collect();
     const filesystems = await this.arango.collection<FSEntry>("filesystems");
-    const edges = await this.arango.collection<EdgeBase>("files_to_system");
+    const edges = await this.arango.collection<EdgeBase>("file_links");
     const doc = res.find((d) => d.path == path);
     const ndoc_base: FSEntryDir = {
       type: "DIRECTORY",
@@ -98,26 +138,35 @@ export class ArangoFSConnector implements MockFSConnector {
         ndoc_entry,
       );
       await edges.create({
-        _to: this.sys_id,
-        _from: ndoc._id,
+        _to: ndoc._id,
+        _from: parent,
       });
     } else {
-      const udoc = await filesystems.get(doc._key);
+      const udoc = await filesystems.get(
+        doc._key,
+      );
       Object.assign(udoc, ndoc_entry);
       await udoc.update();
     }
   }
   public async contains(path: string): Promise<boolean> {
+    if (path == "/") return true;
+    const parent = await this.getDir(path);
     const res = await (await this.arango.graph("files")).traversal<FSEntry>(
-      this.sys_id,
-      "INBOUND",
+      this.root_id,
+      "OUTBOUND",
       {
         prune: { path },
         filter: { path },
+        limit: 500,
       },
     ).collect();
-    const doc = res.find((d) => d.path == path);
-    return !(res.length == 0 || doc == undefined);
+    const doc = parent == "/"
+      ? await (await this.arango.collection<FSEntry>("filesystems")).findOne({
+        _id: this.root_id,
+      })
+      : res.find((d) => d.path == path);
+    return res.length != 0 && doc != undefined;
   }
 }
 
@@ -131,38 +180,103 @@ const arango = await Arango.basicAuth({
   password: config.arangodb.password,
 });
 
-export async function sync(...collections: string[]) {
+export interface CollectionConfigBase {
+  name: string;
+  type: "collection" | "edge" | "graph";
+}
+
+export type CollectionConfig = CollectionConfigBase & {
+  type: "collection";
+};
+
+export type GraphConfig = CollectionConfigBase & {
+  type: "graph";
+  edgeDefinitions: EdgeDefinition[];
+  orphanCollections: string[];
+};
+
+export type EdgeCollectionConfig = CollectionConfigBase & {
+  type: "edge";
+};
+
+export type CollectionDefinitions =
+  | CollectionConfig
+  | GraphConfig
+  | EdgeCollectionConfig;
+
+export async function sync(...collections: CollectionDefinitions[]) {
   for (const collection of collections) {
     try {
-      await arango.createCollection(collection);
-      log("Created collection:", collection);
+      switch (collection.type) {
+        case "collection":
+        case "edge":
+          await arango.createCollection(
+            collection.name,
+            collection.type == "edge",
+          );
+          if (collection.type == "edge") {
+            log("Created edge collection:", collection.name);
+          } else log("Created collection:", collection.name);
+          break;
+        case "graph":
+          await arango.createGraph(
+            collection.name,
+            collection.edgeDefinitions,
+            ...collection.orphanCollections,
+          );
+          log("Created graph:", collection.name);
+          break;
+      }
     } catch (_e) {
-      log("Collection", collection, "already exists. Skipping.");
+      switch (collection.type) {
+        case "collection":
+        case "edge":
+          log("Collection", collection.name, "already exists. Skipping.");
+          break;
+        case "graph":
+          log("Graph", collection.name, "already exists. Skipping.");
+          break;
+      }
     }
   }
 }
 
 export async function createFilesystem(
   user: string,
-  system: string,
 ): Promise<MockFilesystem> {
   const def_fs = defaultFilesystem(user);
-  const conn = new ArangoFSConnector(arango, system);
-  for (const path of Object.keys(def_fs)) {
+  const filesystems = await arango.collection<FSEntry>("filesystems");
+  const root = await filesystems.create({
+    type: "DIRECTORY",
+    path: "/",
+    permissions: {
+      read: def_fs["/"].permissions.read.bits,
+      write: def_fs["/"].permissions.write.bits,
+      execute: def_fs["/"].permissions.execute.bits,
+    },
+    created_at: def_fs["/"].created_at,
+    last_modified: def_fs["/"].last_modified,
+  });
+  const conn = new ArangoFSConnector(arango, root._id);
+  for (const path of Object.keys(def_fs).filter((p) => p != "/")) {
     const entry = def_fs[path];
     await conn.place(path, entry);
   }
   return new MockFilesystem(conn);
 }
 
-export function getFilesystem(key: string): MockFilesystem {
+export async function getFilesystem(sys_id: string): Promise<MockFilesystem> {
   try {
+    const systems = await arango.collection<System>("systems");
+    const sys = await systems.findOne({ _id: sys_id });
+    if (sys == undefined) throw new Error("System not found.");
     const conn = new ArangoFSConnector(
       arango,
-      key,
+      sys.filesystem,
     );
     return new MockFilesystem(conn);
-  } catch (_) {
+  } catch (e) {
+    console.error(e);
     throw new Error("Document not found.");
   }
 }

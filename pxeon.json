@@ -4,9 +4,34 @@
         "username": "pxeon",
         "password": "pxeon",
         "collections": [
-            "users",
-            "filesystems",
-            "systems"
+            {
+                "name": "users",
+                "type": "collection"
+            },
+            {
+                "name": "filesystems",
+                "type": "collection"
+            },
+            {
+                "name": "systems",
+                "type": "collection"
+            },
+            {
+                "name": "file_links",
+                "type": "edge"
+            },
+            {
+                "name": "files",
+                "type": "graph",
+                "edgeDefinitions": [
+                    {
+                        "collection": "file_links",
+                        "from": ["filesystems"],
+                        "to": ["filesystems"]
+                    }
+                ],
+                "orphanCollections": []
+            }
         ]
     },
     "listeners": [
