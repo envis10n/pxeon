@@ -7,41 +7,28 @@ import System from "../database/models/system.ts";
 const systems = await arango.collection<System>("systems");
 
 const command: ICommand = {
-  name: "cd",
-  description: "Change the current directory.",
+  name: "cat",
+  description: "Read a file.",
   help: "{command.name} - {command.description}",
   uuid: crypto.randomUUID(),
   executor: async (process, ...args): Promise<ClientResult> => {
     try {
-      let apath = args.join(" ").trim();
-      if (apath == "~") {
-        apath = `/home/${process.user.username}`;
-      }
-      if (apath == "") {
-        return {
-          command: command.name,
-          stderr: "",
-          stdout: "",
-          code: 0,
-        };
-      }
+      args = args.map((a) => a == "~" ? `/home/${process.user.username}` : a);
       const chain = process.user.connection_chain.split(";");
       const sys_uuid = chain[chain.length - 1];
       const sys = await systems.findOne({ uuid: sys_uuid });
       if (sys == undefined) throw new Error("System not found.");
       const fs = await getFilesystem(sys._id);
-      const npath = _path.isAbsolute(apath)
-        ? apath
-        : _path.resolve(process.env.cwd, apath);
-      if (!await fs.exists(npath)) throw new Error("Path not found.");
-      if (!(await fs.stat(npath)).isDirectory) {
-        throw new Error("Path is not a directory.");
-      }
-      process.session.cwd = npath;
+      const npath = args.length == 0
+        ? process.env.cwd
+        : _path.isAbsolute(args.join(" "))
+        ? args.join(" ")
+        : _path.resolve(process.env.cwd, args[0] || ".");
+      const data = await fs.read(npath, { encoding: "utf-8" });
       return {
         command: command.name,
         stderr: "",
-        stdout: "",
+        stdout: data,
         code: 0,
       };
     } catch (e) {

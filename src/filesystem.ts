@@ -13,6 +13,9 @@ export enum MockPermissionFlag {
   All,
 }
 
+export const PERM_USER_GROUP = MockPermissionFlag.User |
+  MockPermissionFlag.Group;
+
 /**
  * Type alias for `Bitflags<MockPermissionFlag>`.
  */
@@ -37,8 +40,21 @@ export interface MockAccess {
 export interface MockEntryBase {
   type: "DIRECTORY" | "FILE";
   permissions: MockAccess;
-  created: number;
+  created_at: number;
   last_modified: number;
+}
+
+export function defaultMockDir(): MockDirectory {
+  return {
+    type: "DIRECTORY",
+    permissions: {
+      read: MockPermissions(PERM_USER_GROUP),
+      write: MockPermissions(PERM_USER_GROUP),
+      execute: MockPermissions(PERM_USER_GROUP),
+    },
+    created_at: Date.now(),
+    last_modified: Date.now(),
+  };
 }
 
 /**
@@ -66,6 +82,11 @@ export type MockFile = MockEntryBase & {
 export type MockEntry = MockFile | MockDirectory;
 
 /**
+ * An object indexed by paths containing MockEntry values.
+ */
+export type MockFS = { [key: string]: MockEntry };
+
+/**
  * A status object representing a file or directory.
  *
  * The path is also parsed and added to the object for
@@ -86,27 +107,19 @@ export interface IMockFS {
     opts?: { encoding?: "utf-8" },
   ): Promise<Uint8Array | string>;
   read(path: string, opts: { encoding: "utf-8" }): Promise<string>;
-  readSync(path: string): Uint8Array;
-  readSync(path: string, opts?: { encoding?: "utf-8" }): Uint8Array | string;
-  readSync(path: string, opts: { encoding: "utf-8" }): string;
   write(path: string, data: string | Uint8Array): Promise<void>;
   write(path: string, data: string): Promise<void>;
   write(path: string, data: Uint8Array): Promise<void>;
-  writeSync(path: string, data: string | Uint8Array): void;
-  writeSync(path: string, data: string): void;
-  writeSync(path: string, data: Uint8Array): void;
+  append(path: string, data: string | Uint8Array): Promise<void>;
+  append(path: string, data: string): Promise<void>;
+  append(path: string, data: Uint8Array): Promise<void>;
   stat(path: string): Promise<MockStat>;
-  statSync(path: string): MockStat;
   exists(path: string): Promise<boolean>;
-  existsSync(path: string): boolean;
   mkdir(path: string): Promise<void>;
-  mkdirSync(path: string): void;
+  readdir(path: string): Promise<string[]>;
   mkdirp(path: string): Promise<void>;
-  mkdirpSync(path: string): void;
   rm(path: string): Promise<void>;
-  rmSync(path: string): void;
   rmdir(path: string): Promise<void>;
-  rmdirSync(path: string): void;
 }
 
 /**
@@ -116,12 +129,11 @@ export interface IMockFS {
  * require loading the entire mocked filesystem into memory.
  */
 export interface MockFSConnector {
+  root_id: string;
   retrieve(path: string): Promise<MockEntry>;
   place(path: string, entry: MockEntry): Promise<void>;
-  retrieveSync(path: string): MockEntry;
-  placeSync(path: string, entry: MockEntry): void;
   contains(path: string): Promise<boolean>;
-  containsSync(path: string): boolean;
+  recurse(path: string): Promise<string[]>;
 }
 
 /**
@@ -129,8 +141,109 @@ export interface MockFSConnector {
  *
  * Backed by a connector interface to load filesystem contents on the fly.
  */
-export class MockFilesystem {
-  constructor(private connector: MockFSConnector) {
-    //
+export class MockFilesystem implements IMockFS {
+  constructor(public readonly connector: MockFSConnector) {}
+  public async read(path: string): Promise<Uint8Array>;
+  public async read(path: string, opts: { encoding: "utf-8" }): Promise<string>;
+  public async read(
+    path: string,
+    opts?: { encoding?: "utf-8" },
+  ): Promise<string | Uint8Array> {
+    const entry = await this.connector.retrieve(path);
+    if (entry.type == "DIRECTORY") throw new Error("Path is not a file.");
+    if (opts?.encoding == "utf-8") {
+      return new TextDecoder().decode(entry.contents);
+    }
+    return entry.contents;
   }
+  public async write(path: string, data: Uint8Array): Promise<void>;
+  public async write(path: string, data: string): Promise<void>;
+  public async write(path: string, data: Uint8Array | string): Promise<void> {
+    const encoding = typeof data == "string" ? "utf-8" : "binary";
+    if (typeof data == "string") data = new TextEncoder().encode(data);
+    if (await this.connector.contains(path)) {
+      // Exists
+      const entry = await this.connector.retrieve(path);
+      if (entry.type == "DIRECTORY") throw new Error("Path is not a file.");
+      entry.contents = data;
+      return await this.connector.place(path, entry);
+    }
+    const entry: MockFile = {
+      type: "FILE",
+      contents: data,
+      created_at: Date.now(),
+      last_modified: Date.now(),
+      permissions: {
+        read: MockPermissions(PERM_USER_GROUP),
+        write: MockPermissions(PERM_USER_GROUP),
+        execute: MockPermissions(PERM_USER_GROUP),
+      },
+      encoding,
+    };
+    return await this.connector.place(path, entry);
+  }
+  public async append(path: string, data: Uint8Array): Promise<void>;
+  public async append(path: string, data: string): Promise<void>;
+  public async append(path: string, data: Uint8Array | string): Promise<void> {
+    if (typeof data == "string") data = new TextEncoder().encode(data);
+    if (await this.connector.contains(path)) {
+      // Exists
+      const entry = await this.connector.retrieve(path);
+      if (entry.type == "DIRECTORY") throw new Error("Path is not a file.");
+      const ndata = new Uint8Array([...entry.contents, ...data]);
+      entry.contents = ndata;
+      return await this.connector.place(path, entry);
+    }
+    return await this.write(path, data);
+  }
+  public async exists(path: string): Promise<boolean> {
+    return await this.connector.contains(path);
+  }
+  public async stat(path: string): Promise<MockStat> {
+    if (!await this.exists(path)) throw new Error("Path does not exist.");
+    const entry = await this.connector.retrieve(path);
+    return Object.assign({
+      isDirectory: entry.type == "DIRECTORY",
+      isFile: entry.type == "FILE",
+    }, _path.parse(path));
+  }
+  public async mkdir(path: string): Promise<void> {
+    if (await this.exists(path)) throw new Error("Path already exists.");
+    const entry: MockDirectory = {
+      type: "DIRECTORY",
+      created_at: Date.now(),
+      last_modified: Date.now(),
+      permissions: {
+        read: MockPermissions(PERM_USER_GROUP),
+        write: MockPermissions(PERM_USER_GROUP),
+        execute: MockPermissions(PERM_USER_GROUP),
+      },
+    };
+    return await this.connector.place(path, entry);
+  }
+  public async readdir(path: string): Promise<string[]> {
+    return await this.connector.recurse(path);
+  }
+  // deno-lint-ignore require-await no-unused-vars
+  public async mkdirp(path: string): Promise<void> {
+    throw new Error("Not yet implemented.");
+  }
+  // deno-lint-ignore require-await no-unused-vars
+  public async rm(path: string): Promise<void> {
+    throw new Error("Not yet implemented.");
+  }
+  // deno-lint-ignore require-await no-unused-vars
+  public async rmdir(path: string): Promise<void> {
+    throw new Error("Not yet implemented.");
+  }
+}
+
+export function defaultFilesystem(user: string): MockFS {
+  const res: MockFS = {
+    "/": defaultMockDir(),
+    "/home": defaultMockDir(),
+    "/bin": defaultMockDir(),
+  };
+  res[`/home/${user}`] = defaultMockDir();
+  return res;
 }
