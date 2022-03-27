@@ -55,7 +55,7 @@ export class ArangoFSConnector implements MockFSConnector {
         min: 1,
       },
     ).collect();
-    const rec = res.map((e) => _path.parse(e.path).name);
+    const rec = res.map((e) => _path.parse(e.path).base);
     return rec;
   }
   public async retrieve(path: string): Promise<MockEntry> {
